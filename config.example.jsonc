@@ -1,0 +1,39 @@
+{
+  "project": {
+    // Empty uses the release's embedded source offer. Modified builds may set
+    // a public HTTPS download of their matching source (without credentials).
+    "source_url": "",
+  },
+  "discord": {
+    // Required for run: your Discord bot token. Never commit a configured copy.
+    "token": "",
+  },
+  "mal": {
+    // Boolean: true or false. At least one provider must be enabled for run.
+    "enabled": true,
+    // Boolean: true or false. Optional Tenrai catalogue enrichment.
+    "tenrai_enabled": false,
+    // Required when MAL is enabled: your MAL application client ID.
+    "client_id": "",
+    // Positive Go duration after a cycle, such as "50s", "2m", or "1h".
+    "cycle_delay": "50s",
+    // Positive Go duration between requests, such as "3s" or "5s".
+    "request_interval": "3s",
+  },
+  "anilist": {
+    // Boolean: true or false. At least one provider must be enabled for run.
+    "enabled": true,
+    // Positive Go duration after a cycle, such as "90s", "2m", or "1h".
+    "cycle_delay": "90s",
+    // Integer from 1 through 29, shared by tracking, linking, and search.
+    "requests_per_minute": 29,
+  },
+  "storage": {
+    // Nonempty SQLite destination path. Relative paths use the working directory.
+    // In the supplied container, data/ is the persistent /data volume.
+    "database": "data/kotantei.db",
+    // Legacy input path, or "" to disable automatic import. The source is read-only
+    // and must differ from the destination. This compatibility field is retained.
+    "tantei_database": "data/data.db",
+  },
+}

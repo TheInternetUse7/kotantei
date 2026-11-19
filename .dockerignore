@@ -1,0 +1,12 @@
+**
+!Dockerfile
+!go.mod
+!go.sum
+!LICENSE
+!NOTICE
+!cmd/
+!cmd/**
+!internal/
+!internal/**
+!scripts/
+!scripts/**

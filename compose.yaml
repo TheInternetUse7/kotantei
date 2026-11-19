@@ -1,0 +1,40 @@
+services:
+  kotantei:
+    # Use latest, a published vMAJOR.MINOR.PATCH tag, or an immutable @sha256 digest.
+    image: ghcr.io/theinternetuse7/kotantei:latest
+    command: ["--config", "/run/secrets/kotantei_config.jsonc", "run"]
+    # Allowed: "no", always, on-failure[:N], or unless-stopped.
+    restart: unless-stopped
+    # Positive Docker duration, such as 30s or 1m.
+    stop_grace_period: 30s
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # Optional process limit: positive integer, or -1 for unlimited.
+    pids_limit: 128
+    # Optional resource limits: positive CPU count and Docker size (e.g. 512m or 1g).
+    cpus: "1.0"
+    mem_limit: "512m"
+    # Application settings and credentials are defined once, in private config.jsonc.
+    secrets:
+      - source: kotantei_config
+        target: kotantei_config.jsonc
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    volumes:
+      - data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  data:
+
+secrets:
+  kotantei_config:
+    # Copy config.example.jsonc here and fill in credentials.
+    # The file must be readable by container UID/GID 65532 and kept private.
+    file: ./config.jsonc

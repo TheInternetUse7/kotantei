@@ -1,0 +1,19 @@
+Kotantei
+Copyright 2026 theinternetuser
+SPDX-License-Identifier: AGPL-3.0-only
+
+Kotantei is free software: you may redistribute it and/or modify it under
+version 3 of the GNU Affero General Public License, as published by the
+Free Software Foundation. See LICENSE for the full license text.
+
+There is no warranty, including no implied warranty of merchantability or
+fitness for a particular purpose, to the extent permitted by applicable law.
+
+Third-party components retain their own licenses and copyright notices.
+Full dependency notices are shipped under licenses/ in release archives
+and at /usr/share/kotantei/licenses in the container image.
+
+Release builds identify their corresponding source through `kotantei version`
+and Discord `/about`. Distributors and operators must preserve notices and
+provide the matching source, including modifications and build scripts, as
+required by the applicable licenses.

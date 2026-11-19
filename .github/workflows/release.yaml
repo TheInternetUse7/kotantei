@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GOTOOLCHAIN: local
+  GOPROXY: https://proxy.golang.org
+  GOFLAGS: -mod=readonly
+
+jobs:
+  build:
+    name: Verify and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      revision: ${{ steps.identity.outputs.revision }}
+      source_url: ${{ steps.identity.outputs.source_url }}
+      image: ${{ steps.identity.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: "1.27.4"
+          check-latest: false
+      - name: Validate tag and derive explicit release identity
+        id: identity
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/check-release-tag.sh "$RELEASE_TAG"
+          if [[ "$REPOSITORY_PRIVATE" == true ]]; then
+            printf 'This workflow requires a public repository so its matching-source download is available without authentication.\n' >&2
+            exit 1
+          fi
+          source_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/kotantei_${RELEASE_TAG}_source.tar.gz"
+          bash scripts/check-release-identity.sh "$RELEASE_TAG" "$GITHUB_SHA" "$source_url"
+          printf 'version=%s\nrevision=%s\nsource_url=%s\nimage=ghcr.io/%s\n' "$RELEASE_TAG" "$GITHUB_SHA" "$source_url" "${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Verify modules and formatting
+        run: |
+          go mod download
+          go mod verify
+          bash scripts/check-public-config.sh compose.yaml config.example.jsonc
+          unformatted="$(gofmt -l cmd internal)"
+          if [[ -n "$unformatted" ]]; then
+            printf 'Unformatted Go files:\n%s\n' "$unformatted" >&2
+            exit 1
+          fi
+      - name: Test and vet
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          go test -p 2 ./... -count=1 -timeout=300s
+          go vet -p 2 ./...
+      - name: Race tests
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race -p 1 ./... -count=1 -timeout=600s
+      - name: Release helper regressions and offline source rebuild
+        run: |
+          bash scripts/check-release-tag-test.sh
+          bash scripts/check-release-identity-test.sh
+          bash scripts/image-tags-test.sh
+          bash scripts/check-public-config-test.sh
+          bash scripts/release-test.sh
+      - name: Package tag-stamped binaries and corresponding source
+        env:
+          RELEASE_TAG: ${{ steps.identity.outputs.version }}
+          RELEASE_REVISION: ${{ steps.identity.outputs.revision }}
+          RELEASE_SOURCE_URL: ${{ steps.identity.outputs.source_url }}
+        run: bash scripts/package-release.sh "$RELEASE_TAG" "$RELEASE_REVISION" "$RELEASE_SOURCE_URL" "$RUNNER_TEMP/kotantei-assets"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/kotantei-assets/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    name: Publish source and binary release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/kotantei-assets
+      - name: Publish the existing tag; never create or move one
+        working-directory: ${{ runner.temp }}/kotantei-assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.build.outputs.version }}
+          RELEASE_REVISION: ${{ needs.build.outputs.revision }}
+          RELEASE_SOURCE_URL: ${{ needs.build.outputs.source_url }}
+          RELEASE_IMAGE: ${{ needs.build.outputs.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum --check SHA256SUMS
+          actual_revision="$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)"
+          if [[ "$actual_revision" != "$RELEASE_REVISION" ]]; then
+            printf 'Release tag no longer resolves to the verified commit.\n' >&2
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/kotantei-release-notes.md" <<EOF
+          Kotantei $RELEASE_TAG, revision $RELEASE_REVISION.
+
+          Corresponding source, complete dependency-source copies, and full notices: $RELEASE_SOURCE_URL
+
+          Binary archives: Linux amd64/arm64 and Windows amd64. Verify downloads using SHA256SUMS.
+
+          Container image: $RELEASE_IMAGE:$RELEASE_TAG for Linux amd64/arm64. The latest stable release also receives the latest image tag.
+
+          Licensed AGPL-3.0-only; see LICENSE and accompanying third-party notices.
+          EOF
+          args=(--verify-tag --target "$RELEASE_REVISION" --title "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/kotantei-release-notes.md")
+          if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" ./*.tar.gz SHA256SUMS "${args[@]}"
+
+  image:
+    name: Publish GHCR image
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: ghcr-publish-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Select immutable and latest-stable image tags
+        id: image-tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          RELEASE_IMAGE: ${{ needs.build.outputs.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest_release=""
+          if [[ "$RELEASE_VERSION" != *-* ]]; then
+            latest_release="$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)"
+          fi
+          tags="$(bash scripts/image-tags.sh "$RELEASE_VERSION" "$RELEASE_IMAGE" "$latest_release")"
+          printf 'tags<<KOTANTEI_IMAGE_TAGS\n%s\nKOTANTEI_IMAGE_TAGS\n' "$tags" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.image-tags.outputs.tags }}
+          build-args: |
+            VERSION=${{ needs.build.outputs.version }}
+            REVISION=${{ needs.build.outputs.revision }}
+            SOURCE_URL=${{ needs.build.outputs.source_url }}
+            SOURCE_REPOSITORY=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
