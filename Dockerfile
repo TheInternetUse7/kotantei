@@ -38,10 +38,11 @@ COPY --from=build /out/kotantei /usr/local/bin/kotantei
 COPY --from=build /out/licenses /usr/share/kotantei/licenses
 COPY LICENSE NOTICE /usr/share/kotantei/
 COPY --from=build --chown=65532:65532 /out/data /data
+# Fixed Docker storage locations override storage fields in older JSON configs.
+ENV KOTANTEI_DATABASE=/data/kotantei.db KOTANTEI_LEGACY_DATABASE=/setup/data.db
 USER 65532:65532
-# Resolve the application's default data/ paths inside the persistent /data volume.
 WORKDIR /
 VOLUME ["/data"]
 HEALTHCHECK NONE
-ENTRYPOINT ["/usr/local/bin/kotantei"]
+ENTRYPOINT ["/usr/local/bin/kotantei", "--config", "/setup/config.jsonc"]
 CMD ["run"]

@@ -9,34 +9,64 @@ Run one Kotantei instance with its own SQLite database. The default image is `gh
 - Both providers default to enabled. Set `mal.enabled` to `false` for AniList-only operation. Optional Tenrai enrichment defaults to false.
 - Release builds embed a matching-source download for `/about`. If you run modified code, publish its matching source and set `project.source_url`; see [licensing](licensing.md).
 
-Keep `config.jsonc`, databases, and backups private. Compose reads the configuration as a read-only file secret, without duplicating credentials in environment variables. Local file secrets are bind mounts, not an encrypted secret store. Restrict host and Docker administrative access; never include credentials in build arguments or source releases. See [configuration](configuration.md) for all settings.
+Keep `config.jsonc`, databases, and backups private. Compose mounts the deployment directory read-only, without duplicating credentials in environment variables. Use a dedicated directory containing only this bot's deployment files, not a source checkout or a shared secrets folder. Restrict host and Docker administrative access; never include credentials in build arguments or source releases. See [configuration](configuration.md) for all settings.
 
 For a modified build, set `project.source_url` to its matching public source download. Leave it empty for an official image's embedded offer.
 
 ## Compose on a Linux VPS
 
-Requires Docker Engine and the Docker Compose plugin. Copy `compose.yaml` and `config.example.jsonc` into a private deployment directory:
+Requires Docker Engine and the Docker Compose plugin. Copy `compose.yaml` and `config.example.jsonc` into a dedicated deployment directory, then create your private configuration:
 
 ```sh
 cp config.example.jsonc config.jsonc
 ```
 
-Edit `config.jsonc` with the credentials and provider settings. Docker settings are documented directly in Compose; application settings are defined only in the JSONC file.
+Edit `config.jsonc` with the credentials and provider settings. The image manages configuration and storage locations internally; do not add storage paths to the JSONC file or edit Compose for the default setup.
 
-The process runs as UID/GID **65532**. For ordinary rootful Docker on Linux, make the configuration readable only by that identity:
+The expected layout is:
 
-```sh
-sudo chown 65532:65532 config.jsonc
-sudo chmod 0400 config.jsonc
+```text
+kotantei/
+├── compose.yaml
+├── config.jsonc
+└── data.db          # optional consistent legacy database backup
 ```
 
-Use a privileged editor for later changes. Local Compose secret `uid`, `gid`, and `mode` options do not remap file ownership. Rootless Docker, user namespaces, SELinux, and bind mounts may require corresponding access rules. Existing data volumes must also be writable by the container identity.
+### Fresh installation
+
+Leave out `data.db`. The missing optional input is skipped, and Kotantei initializes its own database in the persistent Docker volume. No Compose edits are needed.
+
+### Migration before first startup
+
+Stop Tantei and copy a consistent database backup into this directory as `data.db`. Keep the original for rollback. Prefer a standalone SQLite backup; if copying from a stopped WAL database, retain any `data.db-wal` and `data.db-shm` companions too. Do not copy only the main file while the old bot is running.
+
+The input filename is fixed. If the original database has another name or lives elsewhere, place a consistent backup here named `data.db`. Kotantei reads that copy without changing it and writes its own database to the persistent Docker volume. Both fresh and migrating installations use the same Compose file and startup commands below.
+
+### File access and startup
+
+The process runs as UID/GID **65532**. For ordinary rootful Docker on Linux, allow that identity to traverse the deployment directory and read only the required private files:
+
+```sh
+chmod 0755 .
+sudo chown 65532:65532 config.jsonc
+sudo chmod 0400 config.jsonc
+for file in data.db data.db-wal data.db-shm; do
+  if [ -f "$file" ]; then
+    sudo chown 65532:65532 "$file"
+    sudo chmod 0400 "$file"
+  fi
+done
+```
+
+Use a privileged editor for later changes to `config.jsonc`. Bind mounts preserve host file ownership. Rootless Docker, user namespaces, and SELinux may require corresponding mapped ownership or access rules. Existing data volumes must also be writable by the container identity.
 
 ```sh
 docker compose pull
 docker compose up -d
 docker compose logs --tail=100 -f kotantei
 ```
+
+For a migration, look for `legacy import completed` and the expected account counts. Import happens before Discord/provider startup. If a later network or permission check fails, keep the new database and retry after fixing that failure; do not start a second bot or reset the data volume.
 
 There are no listening ports to expose. Outbound HTTPS/WSS and DNS access are required for Discord, AniList, MAL, and any enabled enrichment. The pinned Distroless static runtime supplies CA certificates and has no shell or package manager.
 
@@ -48,20 +78,16 @@ Once ready, a manager chooses the channel with `/sm set`; users link accounts wi
 
 ## Maintenance and shutdown
 
-The image entrypoint is the executable. `compose run` replaces its default command, so include the mounted configuration path before maintenance commands:
+The image entrypoint selects your configuration automatically, so maintenance commands need no path arguments:
 
 ```sh
 docker compose run --rm --no-deps kotantei version
-docker compose run --rm --no-deps kotantei --config /run/secrets/kotantei_config.jsonc doctor
-docker compose run --rm --no-deps kotantei --config /run/secrets/kotantei_config.jsonc outbox
-docker compose run --rm --no-deps kotantei --config /run/secrets/kotantei_config.jsonc health
+docker compose run --rm --no-deps kotantei doctor
+docker compose run --rm --no-deps kotantei outbox
+docker compose run --rm --no-deps kotantei health
 ```
 
-For an existing running container, `compose exec` needs an explicit executable path; there is no shell:
-
-```sh
-docker compose exec kotantei /usr/local/bin/kotantei --config /run/secrets/kotantei_config.jsonc doctor
-```
+These inspection commands can be used while the bot is running; the image does not need a shell.
 
 `version` reports compiled identity without reading configuration or storage. `doctor`, `outbox`, and `health` inspect existing storage read-only; they do not migrate or create it. **`health` is not a liveness probe**, so no Docker healthcheck is configured. Use `/status` and current structured runtime logs for provider outcomes. Permission failures require repair and `/sm resume` or `resume-channel --channel ID`; restarting alone does not requeue blocked channels.
 
@@ -69,25 +95,15 @@ docker compose exec kotantei /usr/local/bin/kotantei --config /run/secrets/kotan
 
 ## Legacy database migration
 
-1. Stop the old bot and retain a consistent original backup for rollback. Do not run both bots while migrating.
-2. Prefer a standalone SQLite backup made through SQLite's backup API. Copying only the main file of a WAL database can lose committed changes. If copying files from a fully stopped instance instead, keep the database and any `-wal`/`-shm` companions together.
-3. Stop Kotantei if already running. Keep any existing Kotantei database backed up; a populated destination cannot be overwritten by the importer.
-4. Put the consistent legacy snapshot in a private host directory and mount that directory read-only for the explicit import:
+Put a consistent backup named `data.db` beside `compose.yaml` and `config.jsonc`, then use the normal startup commands above. The Docker image automatically imports it into eligible empty storage before starting Discord/provider work. No import path, wrapper, or Compose override is needed.
 
-```sh
-docker compose stop kotantei
-docker compose run --rm --no-deps \
-  --volume "$PWD/legacy-backup:/legacy:ro" \
-  kotantei --config /run/secrets/kotantei_config.jsonc import --source /legacy/data.db
-docker compose run --rm --no-deps kotantei --config /run/secrets/kotantei_config.jsonc doctor
-docker compose up -d
-```
+Imports require an empty destination and leave the source unchanged. A complete standalone backup avoids the additional shared-memory requirements of a read-only WAL snapshot. Unsupported or inconsistent input fails atomically.
 
-The legacy snapshot and companions must be readable by UID/GID 65532. A complete standalone backup avoids the additional shared-memory requirements of a read-only WAL snapshot. Kotantei reads the source without migrating it and writes only its own `/data/kotantei.db`.
+Once the import is recorded, later startups do not inspect or reimport the legacy file. You can retain the copy for rollback or store it elsewhere; the running bot uses its own persisted database.
 
-Alternatively, a conventional `/data/data.db` can be imported into eligible empty storage by `init` or first `run`. Set `storage.tantei_database` to `""` in `config.jsonc` to disable this lookup.
+The importer preserves supported accounts, shared memberships, channels, settings, favorites, and checkpoints. Install the new bot in each retained server and grant access to the imported channels.
 
-The importer preserves supported accounts, shared memberships, channels, settings, favorites, and checkpoints. Unsupported or inconsistent schemas fail atomically. Install the new bot in each retained server and grant access to the imported channels.
+When updating an existing deployment, keep its directory/project name and `data` volume, update the image and Compose file, and retain your private configuration. Older JSONC `storage` entries remain accepted but are overridden by the Docker image; you can remove them. Completed imports do not require changing a legacy path or importing again.
 
 ## Backups, upgrades, and rollback
 

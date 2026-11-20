@@ -15,7 +15,7 @@ Set `discord.token` and, when MAL is enabled, `mal.client_id` in your private `c
 Startup order is deliberate:
 
 1. Validate local configuration/credential shape before creating storage.
-2. Open/upgrade Kotantei SQLite and complete any eligible legacy auto-import. Stop the old bot first and keep a consistent backup. Empty native storage may import the configured source; an existing successful import is idempotent. A populated native destination with no import marker is not overwritten by a newly dropped source. Explicit `import`/`init` still report conflicting import requests.
+2. Open/upgrade Kotantei SQLite and complete any eligible legacy auto-import. Stop the old bot first and keep a consistent backup. Empty native storage may import the configured source; once an import is recorded, later startups skip legacy lookup entirely. A populated native destination with no import marker is not overwritten by a newly dropped source. Explicit `import`/`init` still report conflicting import requests.
 3. Verify the token belongs to a bot and obtain its Discord application and actual application/team owner. Team membership alone does not grant owner authority.
 4. Connect to the gateway and verify READY against that bot/application identity. Unsupported sharding or exhausted session-start limits fail startup clearly.
 5. Bulk-register the supported global command set for this application and reconcile currently tracked server memberships.

@@ -48,6 +48,26 @@ func TestRunValidatesCredentialsBeforeCreatingStorageOrStartingNetworkWork(t *te
 	}
 }
 
+func TestRunStartsWithoutOptionalLegacyInput(t *testing.T) {
+	dir := t.TempDir()
+	target, source := filepath.Join(dir, "kotantei.db"), filepath.Join(dir, "data.db")
+	var stdout, stderr bytes.Buffer
+	started := false
+	code := run(context.Background(), []string{"run"}, &stdout, &stderr, runtimeEnv(target, source, "test-token", "test-client"), func(context.Context, *store.Outbox, config.Config, bot.RuntimeOptions) error {
+		started = true
+		return nil
+	})
+	if code != 0 || !started {
+		t.Fatal("missing optional input blocked startup", code, stderr.String())
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatal("fresh startup did not initialize storage", err)
+	}
+	if _, err := os.Stat(source); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("fresh startup created a legacy input", err)
+	}
+}
+
 func TestRunImportsLegacyAccountsBeforeAnyRuntimeWorkAndPreservesTheSource(t *testing.T) {
 	dir := t.TempDir()
 	source, target := filepath.Join(dir, "data.db"), filepath.Join(dir, "kotantei.db")
@@ -82,6 +102,60 @@ func TestRunImportsLegacyAccountsBeforeAnyRuntimeWorkAndPreservesTheSource(t *te
 	after, err := os.ReadFile(source)
 	if err != nil || !bytes.Equal(before, after) || calls.Load() != 2 {
 		t.Fatal("runtime import rewrote source or was not restart-safe", err, calls.Load())
+	}
+}
+
+func TestRunDoesNotRepeatCompletedLegacyImport(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		directory bool
+	}{
+		{name: "different-file"},
+		{name: "directory", directory: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			source, target := filepath.Join(dir, "original.db"), filepath.Join(dir, "kotantei.db")
+			createEmptyLegacy(t, source)
+			db, err := sql.Open("sqlite", source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`INSERT INTO DiscordUsers VALUES (1); INSERT INTO DiscordGuilds VALUES (10,11); INSERT INTO DiscordGuildDiscordUser VALUES (10,1); INSERT INTO AniListUsers VALUES (101,1,4223,100,90)`); err != nil {
+				db.Close()
+				t.Fatal(err)
+			}
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			var stdout, stderr bytes.Buffer
+			if code := Run(context.Background(), []string{"init"}, &stdout, &stderr, envFor(target, source)); code != 0 {
+				t.Fatal("initial import failed", code, stderr.String())
+			}
+			legacy := filepath.Join(dir, "replacement.db")
+			if tc.directory {
+				err = os.Mkdir(legacy, 0700)
+			} else {
+				err = os.WriteFile(legacy, []byte("not a supported database"), 0600)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			stdout.Reset()
+			stderr.Reset()
+			started := false
+			code := run(context.Background(), []string{"run"}, &stdout, &stderr, runtimeEnv(target, legacy, "test-token", "test-client"), func(ctx context.Context, q *store.Outbox, _ config.Config, _ bot.RuntimeOptions) error {
+				started = true
+				state, err := q.ForUser(ctx, "1", "anilist")
+				if err != nil || state.ExternalID != "101" || state.Features != 4223 || state.Cursors[update.Activity].Value != 100 || state.Cursors[update.ReviewStream].Value != 90 {
+					t.Error("completed import lost accounts or baselines", state, err)
+				}
+				return nil
+			})
+			if code != 0 || !started {
+				t.Fatal("completed import was blocked by a new legacy input", code, stderr.String())
+			}
+		})
 	}
 }
 

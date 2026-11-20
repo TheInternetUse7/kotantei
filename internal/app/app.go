@@ -272,7 +272,10 @@ func runtimeImportSource(ctx context.Context, target *store.Store, cfg config.Co
 	if err := target.DB().QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM imports)`).Scan(&imported); err != nil {
 		return "", err
 	}
-	if !imported && summary.Users+summary.Guilds+summary.Memberships+summary.Accounts+summary.Favorites != 0 {
+	if imported {
+		return "", nil
+	}
+	if summary.Users+summary.Guilds+summary.Memberships+summary.Accounts+summary.Favorites != 0 {
 		logger.Info("optional legacy auto-import skipped: destination already contains native data")
 		return "", nil
 	}

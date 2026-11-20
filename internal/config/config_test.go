@@ -34,7 +34,7 @@ func TestEnvironmentOverridesJSONSecretsAndPaths(t *testing.T) {
 		"KOTANTEI_DATABASE":        "custom/kotantei.db",
 		"KOTANTEI_TANTEI_DATABASE": "custom/legacy.db",
 	}
-	cfg, err := Load(strings.NewReader(`{"discord":{"token":"file-token"},"mal":{"client_id":"file-client","cycle_delay":"2m"}}`), func(key string) (string, bool) { value, ok := env[key]; return value, ok })
+	cfg, err := Load(strings.NewReader(`{"discord":{"token":"file-token"},"mal":{"client_id":"file-client","cycle_delay":"2m"},"storage":{"database":"file/kotantei.db","tantei_database":"file/legacy.db"}}`), func(key string) (string, bool) { value, ok := env[key]; return value, ok })
 	if err != nil {
 		t.Fatal(err)
 	}

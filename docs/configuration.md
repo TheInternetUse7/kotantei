@@ -1,12 +1,14 @@
 # Configuration
 
-Copy [config.example.jsonc](../config.example.jsonc) to a private `config.jsonc`. The template includes every application setting, its default, and accepted values.
+Copy [config.example.jsonc](../config.example.jsonc) to a private `config.jsonc`. The template documents credentials, provider settings, and accepted values. Docker storage paths are not user configuration.
 
-Compose mounts `config.jsonc` read-only; application settings are not duplicated in environment variables. Docker-specific settings are kept in [compose.yaml](../compose.yaml). Apply the [file permissions](deployment.md#compose-on-a-linux-vps), then recreate the service after changing configuration:
+Keep `compose.yaml`, `config.jsonc`, and optional legacy `data.db` in one dedicated deployment directory. The image automatically selects the configuration and database locations. No path settings, generated deployment files, or manual Compose edits are required. Apply the [file permissions](deployment.md#file-access-and-startup), then recreate the service after changing configuration:
 
 ```sh
 docker compose up -d --force-recreate
 ```
+
+## Native runs
 
 For a native run:
 
@@ -14,11 +16,22 @@ For a native run:
 go run ./cmd/kotantei --config ./config.jsonc run
 ```
 
-Configuration is loaded at startup. Settings are applied in this order: built-in defaults, optional JSONC/JSON file, then any explicitly supplied environment overrides. Compose uses only the file.
+Native built-in storage defaults are `data/kotantei.db` and optional legacy `data/data.db`, relative to the working directory. Native runs can optionally override these local paths in a `storage` section, for example:
+
+```jsonc
+"storage": {
+  "database": "data/kotantei.db",
+  "tantei_database": "data.db"
+}
+```
+
+Set the native legacy path to `""` if you do not want automatic import. These storage fields are for native runs; the Docker image overrides them with its fixed internal locations, including when reading older configurations.
+
+Configuration is loaded at startup. Settings are applied in this order: built-in defaults, optional JSONC/JSON file, then environment overrides. Docker supplies only its internal storage locations; credentials and provider settings come from your file.
 
 ## Settings and accepted values
 
-| Field                         | Default            | Accepted values                                                          |
+| Field                         | Template value     | Accepted values                                                          |
 | ----------------------------- | ------------------ | ------------------------------------------------------------------------ |
 | `discord.token`               | Empty              | Discord bot token; required for `run`                                    |
 | `anilist.enabled`             | `true`             | Boolean: `true` or `false`                                               |
@@ -29,11 +42,9 @@ Configuration is loaded at startup. Settings are applied in this order: built-in
 | `mal.tenrai_enabled`          | `false`            | Boolean: `true` or `false`; optional catalogue enrichment                |
 | `mal.cycle_delay`             | `50s`              | Positive Go duration, such as `50s` or `2m`                              |
 | `mal.request_interval`        | `3s`               | Positive Go duration, such as `3s` or `5s`                               |
-| `storage.database`            | `data/kotantei.db` | Nonempty SQLite destination path                                         |
-| `storage.tantei_database`     | `data/data.db`     | Legacy SQLite input path, or an empty string to disable automatic import |
 | `project.source_url`          | Empty              | Public HTTPS download of the running build's matching source             |
 
-Relative paths use the process working directory. The supplied container starts in `/`, so the default `data/` paths resolve inside its persistent `/data` volume. Native runs resolve them from the directory where you start the bot. Source and destination paths must differ; imports read the source without changing it.
+Docker imports a consistent `data.db` backup beside Compose before first startup when the destination is eligible and empty. Missing input is skipped. Once an import is recorded, later startups do not inspect the legacy input again. The source stays read-only and the native database stays in the persistent volume.
 
 At least one provider must be enabled for `run`. To use only AniList, set `mal.enabled` to `false`; its client ID can remain empty. Unknown configuration fields, null values, invalid durations, and files larger than 1 MiB are rejected.
 
@@ -52,11 +63,11 @@ These remain available for native runs and custom deployments; the supplied Comp
 | `KOTANTEI_MAL_TENRAI_ENABLED`          | `mal.tenrai_enabled`          |
 | `KOTANTEI_MAL_CYCLE_DELAY`             | `mal.cycle_delay`             |
 | `KOTANTEI_MAL_REQUEST_INTERVAL`        | `mal.request_interval`        |
-| `KOTANTEI_DATABASE`                    | `storage.database`            |
-| `KOTANTEI_LEGACY_DATABASE`             | `storage.tantei_database`     |
 | `KOTANTEI_SOURCE_URL`                  | `project.source_url`          |
 
-Boolean environment values accept case-insensitive `true` or `false`; surrounding whitespace is trimmed. An explicitly empty boolean, duration, or request limit is invalid. `KOTANTEI_TANTEI_DATABASE` remains a compatibility alias; `KOTANTEI_LEGACY_DATABASE` takes precedence, including an explicitly empty value.
+Boolean environment values accept case-insensitive `true` or `false`; surrounding whitespace is trimmed. An explicitly empty boolean, duration, or request limit is invalid.
+
+For native storage overrides, `KOTANTEI_DATABASE` selects the destination and `KOTANTEI_LEGACY_DATABASE` selects the optional input. `KOTANTEI_TANTEI_DATABASE` remains a compatibility alias; `KOTANTEI_LEGACY_DATABASE` takes precedence, including an explicitly empty value. Normal Docker deployment does not require these settings.
 
 ## Credentials and source links
 

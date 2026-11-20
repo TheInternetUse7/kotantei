@@ -23,9 +23,9 @@ kotantei --config config.jsonc health
 For Compose:
 
 ```sh
-docker compose run --rm --no-deps kotantei --config /run/secrets/kotantei_config.jsonc doctor
-docker compose run --rm --no-deps kotantei --config /run/secrets/kotantei_config.jsonc outbox
-docker compose run --rm --no-deps kotantei --config /run/secrets/kotantei_config.jsonc health
+docker compose run --rm --no-deps kotantei doctor
+docker compose run --rm --no-deps kotantei outbox
+docker compose run --rm --no-deps kotantei health
 ```
 
 `doctor`, `outbox`, and `health` are read-only: they do not create or migrate storage. Their output omits account names, message payloads, lease tokens, and credentials. `health` describes saved state, not current process liveness; use Discord `/status` and runtime logs for current cycle outcomes.

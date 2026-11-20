@@ -1,4 +1,6 @@
 {
+  // Save as config.jsonc beside compose.yaml. Docker manages the storage paths.
+  // To migrate, put a consistent Tantei database backup there named data.db.
   "project": {
     // Empty uses the release's embedded source offer. Modified builds may set
     // a public HTTPS download of their matching source (without credentials).
@@ -27,13 +29,5 @@
     "cycle_delay": "90s",
     // Integer from 1 through 29, shared by tracking, linking, and search.
     "requests_per_minute": 29,
-  },
-  "storage": {
-    // Nonempty SQLite destination path. Relative paths use the working directory.
-    // In the supplied container, data/ is the persistent /data volume.
-    "database": "data/kotantei.db",
-    // Legacy input path, or "" to disable automatic import. The source is read-only
-    // and must differ from the destination. This compatibility field is retained.
-    "tantei_database": "data/data.db",
   },
 }
