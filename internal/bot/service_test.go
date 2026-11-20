@@ -16,6 +16,7 @@ import (
 
 	"github.com/diamondburned/arikawa/v3/discord"
 
+	"kotantei/internal/buildinfo"
 	"kotantei/internal/mal"
 	"kotantei/internal/notification"
 	"kotantei/internal/scheduler"
@@ -82,28 +83,22 @@ func replyEmbed(t *testing.T, result Result) notification.Embed {
 	return message.Embeds[0]
 }
 
-func TestAboutDisplaysLicenseBuildVersionAndSourceOfferWithoutMentions(t *testing.T) {
+func TestAboutReportsBuildVersionWithoutMentions(t *testing.T) {
 	_, _, service := serviceFixture(t, ServiceOptions{})
 	result, err := service.Execute(context.Background(), request("about", nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	embed := replyEmbed(t, result)
-	if !strings.Contains(embed.Description, "AGPL-3.0-only") || !strings.Contains(strings.ToLower(embed.Description), "no warranty") {
-		t.Fatal("about omitted licensing notices", embed)
-	}
-	var version, source bool
 	for _, field := range embed.Fields {
-		if field.Name == "Version" && field.Value != "" {
-			version = true
-		}
-		if field.Name == "Corresponding source" && field.Value != "" {
-			source = true
+		if field.Name == "Version" {
+			if field.Value != buildinfo.Current().Version {
+				t.Fatal("about reported the wrong build version", field.Value)
+			}
+			return
 		}
 	}
-	if !version || !source {
-		t.Fatal("about omitted the running build identity or source offer", embed)
-	}
+	t.Fatal("about omitted the build version")
 }
 
 func TestAboutPreservesTheCompleteConfiguredSourceDownloadURL(t *testing.T) {
@@ -303,23 +298,6 @@ func TestServiceReportsCurrentChannelFailuresWithoutLeakingPayloads(t *testing.T
 	}
 	if !strings.Contains(replyEmbed(t, result).Description, "11") {
 		t.Fatal("status did not show the configured channel")
-	}
-}
-
-func TestAboutKeepsProjectIdentityAndLicenseWithoutComparisons(t *testing.T) {
-	_, _, service := serviceFixture(t, ServiceOptions{})
-	result, err := service.Execute(context.Background(), request("about", nil))
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := replyEmbed(t, result).Description
-	if !strings.Contains(text, "theinternetuser") || !strings.Contains(text, "AGPL-3.0-only") || !strings.Contains(text, "no warranty") {
-		t.Fatal("about omitted the maintainer or license", text)
-	}
-	for _, comparison := range []string{"Tantei", "Shikimori", "independent", "no website", "did not write"} {
-		if strings.Contains(text, comparison) {
-			t.Fatal("about repeated attribution or missing-feature comparisons", text)
-		}
 	}
 }
 

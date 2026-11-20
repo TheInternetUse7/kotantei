@@ -14,7 +14,7 @@ The compiler and general-purpose CI tools are not bundled. Container-base compon
 
 AGPL section 13 requires a modified network-interactive version to prominently offer all remote users its matching Corresponding Source, free of charge through a standard copying mechanism. Publish **the version actually running**, including your changes and required build scripts; a link to an unrelated upstream release or repository homepage is not enough.
 
-`/about` provides the copyright, warranty statement, license link, version, and corresponding-source title link. Official releases compile their source-asset URL. For modified deployments, set `project.source_url` in `config.jsonc` to a public HTTPS download without credentials. The override takes precedence. Provide a matching download when distributing a modified build.
+`/about` shows a brief AGPLv3 label, a repository link, the build version, and a source-download hint when available. Official releases compile their source-asset URL, which is preserved as the embed's title link. For modified deployments, set `project.source_url` in `config.jsonc` to a public HTTPS download without credentials. The override takes precedence. Provide a matching download when distributing a modified build.
 
 `kotantei version` reports the compiled version/revision/source/license without reading configuration or credentials. It does not report an operator override; use `/about` to verify the running interface's offer. Keep source links accessible without a login, retain full notices, prominently identify your modifications and relevant dates as required, and do not impose extra restrictions on recipients' licensed rights.
 

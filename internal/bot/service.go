@@ -224,18 +224,18 @@ func (s *Service) Execute(ctx context.Context, input Request) (Result, error) {
 		return success("Posted the embed with all mentions disabled.")
 	case "about":
 		info := buildinfo.Current()
-		source := "Source URL is not configured. Ask the operator for this build's corresponding source."
-		link := "https://www.gnu.org/licenses/agpl-3.0.html"
-		if s.options.SourceURL != "" {
-			link = s.options.SourceURL
-			source = "Use this embed's title link to download this build's corresponding source and third-party notices."
-		}
-		return embedResult(notification.Embed{
-			Title: "About Kotantei", URL: link,
-			Description: "A Go bot for public AniList and MyAnimeList updates in Discord. Copyright 2026 theinternetuser. Licensed [AGPL-3.0-only](https://www.gnu.org/licenses/agpl-3.0.html): you may redistribute and modify it under that license. There is no warranty.",
+		const repository = "https://github.com/theinternetuse7/Kotantei"
+		embed := notification.Embed{
+			Title: "About Kotantei", URL: repository,
+			Description: "A Go bot for public AniList and MyAnimeList updates in Discord. Licensed [AGPLv3](" + repository + ").",
 			Color:       0x2e51a2,
-			Fields:      []notification.Field{{Name: "Version", Value: info.Version}, {Name: "Corresponding source", Value: source}},
-		})
+			Fields:      []notification.Field{{Name: "Version", Value: info.Version}},
+		}
+		if s.options.SourceURL != "" {
+			embed.URL = s.options.SourceURL
+			embed.Fields = append(embed.Fields, notification.Field{Name: "Source", Value: "Download this build's source from the title link."})
+		}
+		return embedResult(embed)
 	}
 	return Result{}, ErrInvalidCommand
 }

@@ -97,7 +97,7 @@ These require **Manage Server**, **Administrator**, or the verified bot owner. N
 | `/admin cleanup confirm:true`                 | Remove up to 100 users with no server memberships, cascading their orphaned provider data. Repeat if more remain.             |
 | `/admin forcetoleave guildid:ID confirm:true` | Remove that server's tracking configuration. The bot remains a Discord member.                                                |
 | `/admin restart confirm:true`                 | Reply first, then exit gracefully. An external supervisor may restart the executable; no supervisor is installed by Kotantei. |
-| `/about`                                      | Project identity, AGPL/no-warranty notices, build version, and corresponding-source title link.                               |
+| `/about`                                      | Brief description, AGPLv3/repository link, build version, and a source-download hint when configured.                         |
 | `/status`                                     | Current provider-cycle aggregates and this server's delivery state.                                                           |
 
 Server administrators are not automatically bot owners. Destructive commands require explicit `confirm:true`; command replies and `/say` disable all mentions. Provider notification payloads may allowlist only their captured tracked Discord user; roles/everyone and reply pings remain disabled.
