@@ -22,7 +22,7 @@ Builds use `-trimpath`, disabled CGO, and Go 1.27.4. Go can additionally record 
 2. Package binaries for **Linux amd64**, **Linux arm64**, and **Windows amd64**. Each archive includes project licensing, configuration/docs, and complete discovered notices for that target's command-build dependencies and Go.
 3. Package the matching public application source, build/deployment scripts, and verified full-module `.zip`, `.mod`, and `.info` copies for the entire dependency graph. The allowlist excludes operational configuration, databases, and unrelated local files. Full-graph notices are explicitly distinguished from runtime inventories.
 4. Upload `kotantei_TAG_OS_ARCH.tar.gz`, `kotantei_TAG_source.tar.gz`, and `SHA256SUMS` to the existing tag's GitHub release. Publication rechecks the tag's commit through GitHub's API and uses `--verify-tag`: it does not create or move a tag, or overwrite an existing release. Both checkouts are pinned to the original event revision.
-5. After the source release succeeds, cross-build and publish the versioned GHCR image for Linux amd64/arm64, plus `latest` when appropriate. Image provenance is enabled.
+5. After the source release succeeds, cross-build and publish the versioned GHCR image for Linux amd64/arm64, plus `latest` when appropriate. The Docker build checks each executable's ELF architecture against the target platform before publication. Image provenance is enabled.
 
 Action revisions and the Go/Distroless base-image manifests are pinned. Review/update their versions and digests deliberately when patching dependencies. Archives normalize timestamps, ordering, and ownership; this is not a promise that future toolchain/platform changes yield identical binary bytes.
 
